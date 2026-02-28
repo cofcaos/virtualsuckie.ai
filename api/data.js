@@ -1,4 +1,7 @@
-let database = [];
+let database = {
+  characters: [],
+  persona: {}
+};
 
 export default function handler(req, res) {
   if (req.method === "GET") {
