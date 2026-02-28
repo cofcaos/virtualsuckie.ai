@@ -5,6 +5,7 @@ const openai = new OpenAI({
 });
 
 export default async function handler(req, res) {
+
   const { character, persona, messages } = req.body;
 
   const completion = await openai.chat.completions.create({
@@ -20,6 +21,9 @@ ${character.desc}
 
 User persona:
 ${persona?.desc || ""}
+
+CRITICAL:
+Always reply in the same language the user used in their last message.
 `
       },
       ...messages.map(m => ({
