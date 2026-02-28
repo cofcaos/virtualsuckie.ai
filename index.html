@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Virtual Suckie</title>
 <style>
-body { background:#111; color:#eee; font-family:Arial; margin:0; display:flex; height:100vh; }
+body { background:#111; color:#a1d4a2; font-family:Lucida Handwriting; margin:0; display:flex; height:100vh; }
 #sidebar { width:260px; background:#1b1b1b; padding:15px; overflow-y:auto; }
 #content { flex:1; display:flex; flex-direction:column; }
 header { padding:15px; background:#181818; font-size:18px; }
@@ -24,8 +24,8 @@ input, textarea { background:#222; color:white; border:none; padding:8px; margin
 <body>
 
 <div id="sidebar">
-  <button onclick="showHome()">Home</button>
   <button onclick="showCharacterEditor()">Add Character</button>
+  <button onclick="showPersonaEditor()">Edit Persona</button>
   <div id="characterList"></div>
 </div>
 
@@ -37,12 +37,15 @@ input, textarea { background:#222; color:white; border:none; padding:8px; margin
 <script>
 
 let characters = [];
+let persona = {};
 let currentCharacterIndex = null;
 let currentConversationIndex = null;
 
 async function loadData() {
   const res = await fetch("/api/data");
-  characters = await res.json();
+  const data = await res.json();
+  characters = data.characters || [];
+  persona = data.persona || {};
   renderCharacterList();
 }
 
@@ -50,7 +53,7 @@ async function saveData() {
   await fetch("/api/data", {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(characters)
+    body: JSON.stringify({ characters, persona })
   });
 }
 
@@ -83,9 +86,29 @@ function showCharacterEditor() {
 async function addCharacter() {
   const name = document.getElementById("charName").value;
   const desc = document.getElementById("charDesc").value;
+  if (!name) return;
   characters.push({ name, desc, conversations: [] });
   await saveData();
   loadData();
+  showHome();
+}
+
+function showPersonaEditor() {
+  document.getElementById("mainView").innerHTML = `
+    <div style="padding:20px;">
+      <input id="personaName" placeholder="Persona name" value="${persona.name || ""}">
+      <textarea id="personaDesc" rows="6" placeholder="Persona description">${persona.desc || ""}</textarea>
+      <button onclick="savePersona()">Save Persona</button>
+    </div>
+  `;
+}
+
+async function savePersona() {
+  persona = {
+    name: document.getElementById("personaName").value,
+    desc: document.getElementById("personaDesc").value
+  };
+  await saveData();
   showHome();
 }
 
@@ -93,17 +116,13 @@ function openCharacter(index) {
   currentCharacterIndex = index;
   const char = characters[index];
 
-  let convoButtons = "";
+  let convoButtons = `<button onclick="createConversation()">New Conversation</button>`;
   char.conversations.forEach((conv, i) => {
     convoButtons += `<button onclick="openConversation(${i})">${conv.title}</button>`;
   });
 
-  document.getElementById("mainView").innerHTML = `
-    <div style="padding:15px;">
-      <button onclick="createConversation()">New Conversation</button>
-      ${convoButtons}
-    </div>
-  `;
+  document.getElementById("mainView").innerHTML =
+    `<div style="padding:15px;">${convoButtons}</div>`;
 }
 
 async function createConversation() {
@@ -118,8 +137,7 @@ async function createConversation() {
 }
 
 function formatText(text) {
-  return text
-    .replace(/\*(.*?)\*/g, "<i>$1</i>");
+  return text.replace(/\*(.*?)\*/g, "<i>$1</i>");
 }
 
 function openConversation(index) {
@@ -130,6 +148,7 @@ function openConversation(index) {
   convo.messages.forEach(m => {
     chatHTML += `<div class="msg"><b>${m.role}:</b> ${formatText(m.content)}</div>`;
   });
+
   chatHTML += `</div>
   <div id="inputArea">
     <input id="userInput">
@@ -146,7 +165,6 @@ async function sendMessage() {
 
   const convo = characters[currentCharacterIndex].conversations[currentConversationIndex];
   convo.messages.push({ role:"You", content:text });
-
   input.value="";
   openConversation(currentConversationIndex);
 
@@ -155,13 +173,16 @@ async function sendMessage() {
     headers:{ "Content-Type":"application/json" },
     body: JSON.stringify({
       character: characters[currentCharacterIndex],
+      persona: persona,
       messages: convo.messages
     })
   });
 
   const data = await response.json();
-
-  convo.messages.push({ role: characters[currentCharacterIndex].name, content:data.reply });
+  convo.messages.push({
+    role: characters[currentCharacterIndex].name,
+    content:data.reply
+  });
 
   await saveData();
   openConversation(currentConversationIndex);
