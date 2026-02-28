@@ -4,201 +4,170 @@
 <meta charset="UTF-8">
 <title>Virtual Suckie</title>
 <style>
-body {
-  background:#111;
-  color:#eee;
-  font-family:Arial;
-  margin:0;
-  height:100vh;
-  display:flex;
-  flex-direction:column;
-}
+body { background:#111; color:#eee; font-family:Arial; margin:0; display:flex; height:100vh; }
+#sidebar { width:260px; background:#1b1b1b; padding:15px; overflow-y:auto; }
+#content { flex:1; display:flex; flex-direction:column; }
+header { padding:15px; background:#181818; font-size:18px; }
 
-header {
-  padding:15px;
-  background:#181818;
-  font-size:20px;
-}
-
-#main {
-  flex:1;
-  display:flex;
-}
-
-#sidebar {
-  width:250px;
-  background:#1b1b1b;
-  padding:15px;
-  overflow-y:auto;
-}
-
-#content {
-  flex:1;
-  display:flex;
-  flex-direction:column;
-}
-
-button {
-  background:#333;
-  color:white;
-  border:none;
-  padding:8px;
-  margin-bottom:8px;
-  width:100%;
-  cursor:pointer;
-}
-
+button { background:#333; color:white; border:none; padding:8px; margin-bottom:8px; width:100%; cursor:pointer; }
 button:hover { background:#444; }
 
-textarea, input {
-  background:#222;
-  color:white;
-  border:none;
-  padding:8px;
-  margin-bottom:10px;
-  width:100%;
-}
+input, textarea { background:#222; color:white; border:none; padding:8px; margin-bottom:10px; width:100%; }
 
-#chat {
-  flex:1;
-  overflow-y:auto;
-  padding:15px;
-}
+#chat { flex:1; overflow-y:auto; padding:15px; }
+.msg { margin-bottom:12px; white-space:pre-wrap; }
 
-.msg { margin-bottom:12px; }
-
-#inputArea {
-  display:flex;
-  padding:10px;
-  background:#181818;
-}
-
-#inputArea input {
-  flex:1;
-  margin-right:10px;
-}
+#inputArea { display:flex; padding:10px; background:#181818; }
+#inputArea input { flex:1; margin-right:10px; }
 </style>
 </head>
 <body>
 
-<header>Virtual Suckie</header>
-
-<div id="main">
-
 <div id="sidebar">
   <button onclick="showHome()">Home</button>
   <button onclick="showCharacterEditor()">Add Character</button>
-  <button onclick="showPersonaEditor()">Edit Persona</button>
   <div id="characterList"></div>
 </div>
 
-<div id="content"></div>
-
+<div id="content">
+  <header>Virtual Suckie</header>
+  <div id="mainView"></div>
 </div>
 
 <script>
 
-let characters = JSON.parse(localStorage.getItem("characters") || "[]");
-let persona = JSON.parse(localStorage.getItem("persona") || "{}");
-let currentCharacter = null;
+let characters = [];
+let currentCharacterIndex = null;
+let currentConversationIndex = null;
 
-function saveData() {
-  localStorage.setItem("characters", JSON.stringify(characters));
-  localStorage.setItem("persona", JSON.stringify(persona));
+async function loadData() {
+  const res = await fetch("/api/data");
+  characters = await res.json();
   renderCharacterList();
+}
+
+async function saveData() {
+  await fetch("/api/data", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(characters)
+  });
 }
 
 function renderCharacterList() {
   const list = document.getElementById("characterList");
   list.innerHTML = "";
-  characters.forEach((c, index) => {
+  characters.forEach((c, i) => {
     const btn = document.createElement("button");
     btn.textContent = c.name;
-    btn.onclick = () => openChat(index);
+    btn.onclick = () => openCharacter(i);
     list.appendChild(btn);
   });
 }
 
 function showHome() {
-  document.getElementById("content").innerHTML =
-  "<div style='padding:20px;'>Select or create a character.</div>";
+  document.getElementById("mainView").innerHTML =
+    "<div style='padding:20px;'>Select a character.</div>";
 }
 
 function showCharacterEditor() {
-  document.getElementById("content").innerHTML = `
+  document.getElementById("mainView").innerHTML = `
     <div style="padding:20px;">
-      <input id="charName" placeholder="Character name" />
-      <textarea id="charDesc" rows="10" placeholder="Full character description"></textarea>
-      <button onclick="addCharacter()">Save Character</button>
+      <input id="charName" placeholder="Character name">
+      <textarea id="charDesc" rows="8" placeholder="Full description"></textarea>
+      <button onclick="addCharacter()">Save</button>
     </div>
   `;
 }
 
-function addCharacter() {
+async function addCharacter() {
   const name = document.getElementById("charName").value;
   const desc = document.getElementById("charDesc").value;
-  if (!name) return;
-  characters.push({ name, desc });
-  saveData();
+  characters.push({ name, desc, conversations: [] });
+  await saveData();
+  loadData();
   showHome();
 }
 
-function showPersonaEditor() {
-  document.getElementById("content").innerHTML = `
-    <div style="padding:20px;">
-      <input id="personaName" placeholder="Your persona name" value="${persona.name || ""}" />
-      <textarea id="personaDesc" rows="6" placeholder="Your persona description">${persona.desc || ""}</textarea>
-      <button onclick="savePersona()">Save Persona</button>
+function openCharacter(index) {
+  currentCharacterIndex = index;
+  const char = characters[index];
+
+  let convoButtons = "";
+  char.conversations.forEach((conv, i) => {
+    convoButtons += `<button onclick="openConversation(${i})">${conv.title}</button>`;
+  });
+
+  document.getElementById("mainView").innerHTML = `
+    <div style="padding:15px;">
+      <button onclick="createConversation()">New Conversation</button>
+      ${convoButtons}
     </div>
   `;
 }
 
-function savePersona() {
-  persona = {
-    name: document.getElementById("personaName").value,
-    desc: document.getElementById("personaDesc").value
-  };
-  saveData();
-  showHome();
+async function createConversation() {
+  const title = prompt("Conversation name:");
+  if (!title) return;
+  characters[currentCharacterIndex].conversations.push({
+    title,
+    messages:[]
+  });
+  await saveData();
+  openCharacter(currentCharacterIndex);
 }
 
-function openChat(index) {
-  currentCharacter = characters[index];
+function formatText(text) {
+  return text
+    .replace(/\*(.*?)\*/g, "<i>$1</i>");
+}
 
-  document.getElementById("content").innerHTML = `
-    <div id="chat"></div>
-    <div id="inputArea">
-      <input id="userInput" placeholder="Type here..." />
-      <button onclick="sendMessage()">Send</button>
-    </div>
-  `;
+function openConversation(index) {
+  currentConversationIndex = index;
+  const convo = characters[currentCharacterIndex].conversations[index];
+
+  let chatHTML = `<div id="chat">`;
+  convo.messages.forEach(m => {
+    chatHTML += `<div class="msg"><b>${m.role}:</b> ${formatText(m.content)}</div>`;
+  });
+  chatHTML += `</div>
+  <div id="inputArea">
+    <input id="userInput">
+    <button onclick="sendMessage()">Send</button>
+  </div>`;
+
+  document.getElementById("mainView").innerHTML = chatHTML;
 }
 
 async function sendMessage() {
   const input = document.getElementById("userInput");
-  const chat = document.getElementById("chat");
   const text = input.value.trim();
   if (!text) return;
 
-  chat.innerHTML += `<div class="msg"><b>You:</b> ${text}</div>`;
-  input.value = "";
+  const convo = characters[currentCharacterIndex].conversations[currentConversationIndex];
+  convo.messages.push({ role:"You", content:text });
+
+  input.value="";
+  openConversation(currentConversationIndex);
 
   const response = await fetch("/api/chat", {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
     body: JSON.stringify({
-      message: text,
-      character: currentCharacter,
-      persona: persona
+      character: characters[currentCharacterIndex],
+      messages: convo.messages
     })
   });
 
   const data = await response.json();
-  chat.innerHTML += `<div class="msg"><b>${currentCharacter.name}:</b> ${data.reply}</div>`;
-  chat.scrollTop = chat.scrollHeight;
+
+  convo.messages.push({ role: characters[currentCharacterIndex].name, content:data.reply });
+
+  await saveData();
+  openConversation(currentConversationIndex);
 }
 
-renderCharacterList();
+loadData();
 showHome();
 
 </script>
